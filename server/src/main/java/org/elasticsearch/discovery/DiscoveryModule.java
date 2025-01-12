@@ -2,7 +2,7 @@
  * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
  * or more contributor license agreements. Licensed under the "Elastic License
  * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
- * Public License v 1"; you may not use this file except in compliance with, at
+ * Public License v 1"; you may not use this file except in compliance with at
  * your election, the "Elastic License 2.0", the "GNU Affero General Public
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
@@ -115,6 +115,7 @@ public class DiscoveryModule extends AbstractModule {
         hostProviders.put("file", () -> new FileBasedSeedHostsProvider(configFile));
         final Map<String, ElectionStrategy> electionStrategies = new HashMap<>();
         electionStrategies.put(DEFAULT_ELECTION_STRATEGY, ElectionStrategy.DEFAULT_INSTANCE);
+
         for (DiscoveryPlugin plugin : discoveryPlugins) {
             plugin.getSeedHostProviders(transportService, networkService).forEach((key, value) -> {
                 if (hostProviders.put(key, value) != null) {
@@ -124,7 +125,7 @@ public class DiscoveryModule extends AbstractModule {
         }
 
         for (ClusterCoordinationPlugin plugin : clusterCoordinationPlugins) {
-            BiConsumer<DiscoveryNode, ClusterState> joinValidator = plugin.getJoinValidator();
+            final BiConsumer<DiscoveryNode, ClusterState> joinValidator = plugin.getJoinValidator();
             if (joinValidator != null) {
                 joinValidators.add(joinValidator);
             }
@@ -137,8 +138,8 @@ public class DiscoveryModule extends AbstractModule {
 
         List<String> seedProviderNames = DISCOVERY_SEED_PROVIDERS_SETTING.get(settings);
         // for bwc purposes, add settings provider even if not explicitly specified
-        if (seedProviderNames.contains("settings") == false) {
-            List<String> extendedSeedProviderNames = new ArrayList<>();
+        if (!seedProviderNames.contains("settings")) {
+            final List<String> extendedSeedProviderNames = new ArrayList<>();
             extendedSeedProviderNames.add("settings");
             extendedSeedProviderNames.addAll(seedProviderNames);
             seedProviderNames = extendedSeedProviderNames;
@@ -146,20 +147,24 @@ public class DiscoveryModule extends AbstractModule {
 
         final Set<String> missingProviderNames = new HashSet<>(seedProviderNames);
         missingProviderNames.removeAll(hostProviders.keySet());
-        if (missingProviderNames.isEmpty() == false) {
+        if (!missingProviderNames.isEmpty()) {
             throw new IllegalArgumentException("Unknown seed providers " + missingProviderNames);
         }
 
-        List<SeedHostsProvider> filteredSeedProviders = seedProviderNames.stream().map(hostProviders::get).map(Supplier::get).toList();
+        final List<SeedHostsProvider> filteredSeedProviders = seedProviderNames.stream()
+            .map(hostProviders::get)
+            .map(Supplier::get)
+            .toList();
 
-        String discoveryType = DISCOVERY_TYPE_SETTING.get(settings);
+        final String discoveryType = DISCOVERY_TYPE_SETTING.get(settings);
 
         final SeedHostsProvider seedHostsProvider = hostsResolver -> {
             final List<TransportAddress> addresses = new ArrayList<>();
             for (SeedHostsProvider provider : filteredSeedProviders) {
                 addresses.addAll(provider.getSeedAddresses(hostsResolver));
             }
-            return Collections.unmodifiableList(addresses);
+            // changed to List.copyOf for an immutable result
+            return List.copyOf(addresses);
         };
 
         final ElectionStrategy electionStrategy = electionStrategies.get(ELECTION_STRATEGY_SETTING.get(settings));
@@ -168,8 +173,8 @@ public class DiscoveryModule extends AbstractModule {
         }
 
         this.reconfigurator = getReconfigurator(settings, clusterSettings, clusterCoordinationPlugins);
-        var preVoteCollectorFactory = getPreVoteCollectorFactory(clusterCoordinationPlugins);
-        var leaderHeartbeatService = getLeaderHeartbeatService(settings, clusterCoordinationPlugins);
+        final PreVoteCollector.Factory preVoteCollectorFactory = getPreVoteCollectorFactory(clusterCoordinationPlugins);
+        final LeaderHeartbeatService leaderHeartbeatService = getLeaderHeartbeatService(settings, clusterCoordinationPlugins);
 
         if (MULTI_NODE_DISCOVERY_TYPE.equals(discoveryType) || SINGLE_NODE_DISCOVERY_TYPE.equals(discoveryType)) {
             coordinator = new Coordinator(
@@ -209,7 +214,7 @@ public class DiscoveryModule extends AbstractModule {
         ClusterSettings clusterSettings,
         List<ClusterCoordinationPlugin> clusterCoordinationPlugins
     ) {
-        final var reconfiguratorFactories = clusterCoordinationPlugins.stream()
+        final List<Reconfigurator.Factory> reconfiguratorFactories = clusterCoordinationPlugins.stream()
             .map(ClusterCoordinationPlugin::getReconfiguratorFactory)
             .flatMap(Optional::stream)
             .toList();
@@ -227,7 +232,7 @@ public class DiscoveryModule extends AbstractModule {
 
     // visible for testing
     static PreVoteCollector.Factory getPreVoteCollectorFactory(List<ClusterCoordinationPlugin> clusterCoordinationPlugins) {
-        final var preVoteCollectorFactories = clusterCoordinationPlugins.stream()
+        final List<PreVoteCollector.Factory> preVoteCollectorFactories = clusterCoordinationPlugins.stream()
             .map(ClusterCoordinationPlugin::getPreVoteCollectorFactory)
             .flatMap(Optional::stream)
             .toList();
@@ -244,7 +249,7 @@ public class DiscoveryModule extends AbstractModule {
     }
 
     static LeaderHeartbeatService getLeaderHeartbeatService(Settings settings, List<ClusterCoordinationPlugin> clusterCoordinationPlugins) {
-        final var heartbeatServices = clusterCoordinationPlugins.stream()
+        final List<LeaderHeartbeatService> heartbeatServices = clusterCoordinationPlugins.stream()
             .map(plugin -> plugin.getLeaderHeartbeatService(settings))
             .flatMap(Optional::stream)
             .toList();
